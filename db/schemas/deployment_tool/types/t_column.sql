@@ -8,6 +8,7 @@ create or replace type t_column is object(
   nullable           varchar(1),
   default_value      varchar2(30),
   virtual_expression varchar2(4000),
+  comments           varchar2(4000),
 map member function equals return varchar2,
 member function mf_type_to_string return varchar2,
 member function mf_get_add_column_string return varchar2,

@@ -38,24 +38,27 @@ as
   vv_table_owner            varchar2(30);
   vv_table_name             varchar2(30);
   vv_table_type             varchar2(30);
+  vv_table_comments         varchar2(4000);
   vn_qty                    number;
   vc_sql                    clob := empty_clob();
   vc_add_columns_sql        clob := empty_clob();
   vc_modify_columns_sql     clob := empty_clob();
 --  vc_rename_columns_sql     clob := empty_clob();
   vc_drop_columns_sql       clob := empty_clob();
+  i                         pls_integer;
 begin
   --table name
-  select upper(trim(owner)) as owner, upper(trim(name)) as name, upper(trim(type)) as type
-  into vv_table_owner, vv_table_name, vv_table_type
+  select nvl(upper(trim(owner)), user) as owner, upper(trim(name)) as name, upper(trim(type)) as type, trim(comments) as comments
+  into vv_table_owner, vv_table_name, vv_table_type, vv_table_comments
   from xmltable('/table'
                  passing xmltype(p_xml)
                  columns
-                    owner varchar2(30) path '@owner',
-                    name  varchar2(30) path '@name',
-                    type  varchar2(30) path '@type') xml;
+                    owner    varchar2(30)   path '@owner',
+                    name     varchar2(30)   path '@name',
+                    type     varchar2(30)   path '@type',
+                    comments varchar2(4000) path '@comments') xml;
   -- columns list
-  select t_column(name, type, char_length, data_precision, data_scale, char_used, nullable, default_value, virtual_expression)
+  select t_column(name, type, char_length, data_precision, data_scale, char_used, nullable, default_value, virtual_expression, comments)
   bulk collect into vt_xml_columns_table
   from (select name,
                type,
@@ -73,18 +76,16 @@ begin
                    else regexp_substr(n, '^(\d+)\s*(\,?\s*(\d+))?(\w+)?\s*', 1, 1, 'i', 4)
                  end ) char_used,
                nullable,
---               nvl(default_value, 'null') default_value,
--- null -> null
--- '' -> null
                default_value,
-               
-               virtual_expression
+               virtual_expression,
+               comments
         from (select upper(trim(name)) as name,
                              upper(trim(regexp_substr(type, '^\s*(\w+)\s*(\(\s*(.*)\s*\))?', 1, 1, 'i', 1))) type,
                              upper(trim(regexp_substr(type, '^\s*(\w+)\s*(\(\s*(.*)\s*\))?', 1, 1, 'i', 3))) n,
                              upper(nvl(trim(nullable), 'y')) as nullable,
                              upper(trim(default_value)) as default_value,
-                             upper(trim(virtual_expression)) as virtual_expression
+                             upper(trim(virtual_expression)) as virtual_expression,
+                             comments
                       from xmltable('/table/columns/column'
                                      passing xmltype(p_xml)
                                      columns
@@ -92,7 +93,8 @@ begin
                                         type               varchar2(30)   path '@type',
                                         nullable           char(1)        path '@nullable',
                                         default_value      varchar2(30)   path '@default_value',
-                                        virtual_expression varchar2(4000) path '@virtual_expression') xml));
+                                        virtual_expression varchar2(4000) path '@virtual_expression',
+                                        comments           varchar2(4000) path '@comments') xml));
   -- constraints list
   select t_constraint(name, type, columns_list, foreign_owner, foreign_table, foreign_columns_list, condition, delete_rule, validate_clause)
   bulk collect into vt_xml_constraints_table
@@ -143,10 +145,12 @@ begin
   -- 1. create table
   if vn_qty = 0 then
     vc_sql := 'create table ' || vv_table_owner || '.' || vv_table_name || '(';
-    -- columns
-    for i in vt_xml_columns_table.first..vt_xml_columns_table.last
+    -- 1.1 columns
+    i := vt_xml_columns_table.first;
+    while i is not null
     loop
       vc_sql := vc_sql || vt_xml_columns_table(i).mf_get_add_column_string || ',';
+      i := vt_xml_columns_table.next(i);
     end loop;
     --
     vc_sql := trim(both ',' from vc_sql) || ')';
@@ -154,53 +158,81 @@ begin
     --
     execute immediate vc_sql;
     --
+    -- 1.2 comments
+    -- 1.2.1 table comments
+    if vv_table_comments is not null then
+      vc_sql := 'comment on table ' || vv_table_owner || '.' || vv_table_name || ' is ''' || vv_table_comments || '''';
+      dbms_output.put_line(vc_sql);
+      execute immediate vc_sql;
+    end if;
+    --
+    -- 1.2.2 columns comments
+    i := vt_xml_columns_table.first;
+    while i is not null
+    loop
+      if (vt_xml_columns_table(i).comments is not null) then
+        vc_sql := 'comment on column ' || vv_table_owner || '.' || vv_table_name || '.' || vt_xml_columns_table(i).name || ' is ''' || vt_xml_columns_table(i).comments || '''';
+        dbms_output.put_line(vc_sql);
+        execute immediate vc_sql;
+      end if;
+      i := vt_xml_columns_table.next(i);
+    end loop;
+    --
     -- constraints
-    for i in vt_xml_constraints_table.first..vt_xml_constraints_table.last
+    i := vt_xml_constraints_table.first;
+    while i is not null
     loop
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name || vt_xml_constraints_table(i).mf_get_create_string;
       dbms_output.put_line(vc_sql);
+      i := vt_xml_constraints_table.next(i);
       --
       execute immediate vc_sql;
     end loop;
     --
     --indexes
-    for i in vt_xml_indexes_table.first..vt_xml_indexes_table.last
+    i := vt_xml_indexes_table.first;
+    while i is not null
     loop
       vc_sql := 'create ' || vt_xml_indexes_table(i).type || ' index ' || vt_xml_indexes_table(i).name || ' on ' || vv_table_name || ' (' || vt_xml_indexes_table(i).clause || ')';
       dbms_output.put_line(vc_sql);
       --
       execute immediate vc_sql;
+      i := vt_xml_indexes_table.next(i);
     end loop;
   -- 2. modify structure
   else
     -- 2.1. columns
-    select t_column(name, type, char_length, data_precision, data_scale, char_used, nullable, default_value, virtual_expression)
+    select t_column(name, type, char_length, data_precision, data_scale, char_used, nullable, default_value, virtual_expression, comments)
     bulk collect into vt_db_columns_table
-    from (select column_name as name,
+    from (select tc.column_name as name,
                  case
-                   when virtual_column = 'YES' then null
+                   when tc.virtual_column = 'YES' then null
                    else data_type
                  end as type,
-                 char_length,
-                 data_precision,
-                 decode(data_scale, 0, null) data_scale,
-                 pkg_utils.sf_normalize_char_used(char_used) char_used,
-                 nullable,
+                 tc.char_length,
+                 tc.data_precision,
+                 decode(tc.data_scale, 0, null) data_scale,
+                 pkg_utils.sf_normalize_char_used(tc.char_used) char_used,
+                 tc.nullable,
                  case
-                     when pkg_utils.sf_get_data_default(owner, table_name, column_name) is not null and virtual_column = 'NO' then pkg_utils.sf_get_data_default(owner, table_name, column_name)
+                     when pkg_utils.sf_get_data_default(tc.owner, tc.table_name, tc.column_name) is not null and tc.virtual_column = 'NO' then pkg_utils.sf_get_data_default(tc.owner, tc.table_name, tc.column_name)
                      else null
                  end default_value,
                  case
-                     when pkg_utils.sf_get_data_default(owner, table_name, column_name) is not null and virtual_column = 'YES' then pkg_utils.sf_get_data_default(owner, table_name, column_name)
+                     when pkg_utils.sf_get_data_default(tc.owner, tc.table_name, tc.column_name) is not null and tc.virtual_column = 'YES' then pkg_utils.sf_get_data_default(tc.owner, tc.table_name, tc.column_name)
                      else null
-                 end virtual_expression
-          from all_tab_cols
-          where owner = vv_table_owner
-            and table_name = vv_table_name
-            and column_id is not null);
+                 end virtual_expression,
+                 cc.comments
+          from all_tab_cols tc, all_col_comments cc
+          where tc.owner       = cc.owner(+)
+            and tc.table_name  = cc.table_name(+)
+            and tc.column_name = cc.column_name(+)
+            and tc.owner       = vv_table_owner
+            and tc.table_name  = vv_table_name
+            and tc.column_id is not null);
     --
-    select t_columns_pair(t_column(db.name, db.type, db.char_length, db.data_precision, db.data_scale, db.char_used, db.nullable, db.default_value, db.virtual_expression),
-                          t_column(xml.name, xml.type, xml.char_length, xml.data_precision, xml.data_scale, xml.char_used, xml.nullable, xml.default_value, xml.virtual_expression))
+    select t_columns_pair(t_column(db.name, db.type, db.char_length, db.data_precision, db.data_scale, db.char_used, db.nullable, db.default_value, db.virtual_expression, db.comments),
+                          t_column(xml.name, xml.type, xml.char_length, xml.data_precision, xml.data_scale, xml.char_used, xml.nullable, xml.default_value, xml.virtual_expression, xml.comments))
     bulk collect into vt_columns_pair_table
     from table(vt_xml_columns_table) xml full join table(vt_db_columns_table) db on (xml.name = db.name);
     --
@@ -217,7 +249,8 @@ begin
                                                                     vt_columns_pair_table(i).xml_column.char_used,
                                                                     vt_columns_pair_table(i).xml_column.nullable,
                                                                     vt_columns_pair_table(i).xml_column.default_value,
-                                                                    vt_columns_pair_table(i).xml_column.virtual_expression);
+                                                                    vt_columns_pair_table(i).xml_column.virtual_expression,
+                                                                    vt_columns_pair_table(i).xml_column.comments);
       -- 2.1.2. modufy column types
       elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name) 
          and (vt_columns_pair_table(i).db_column != vt_columns_pair_table(i).xml_column)) then
@@ -228,7 +261,7 @@ begin
         vt_modify_columns_table.extend;
         -- 2.1.2.1 initialization + name
         vt_modify_columns_table(vt_modify_columns_table.last) := t_column(vt_columns_pair_table(i).xml_column.name,
-                                                                          null, null, null, null, null, null, null, null);
+                                                                          null, null, null, null, null, null, null, null, null);
         -- 2.1.2.2 type != type
         if ((vt_columns_pair_table(i).db_column.type != vt_columns_pair_table(i).xml_column.type) and
             (vt_columns_pair_table(i).db_column.type is not null) and
@@ -306,7 +339,7 @@ begin
       elsif (vt_columns_pair_table(i).xml_column.name is null) then
         vt_drop_columns_table.extend;
         vt_drop_columns_table(vt_drop_columns_table.last) := t_column(vt_columns_pair_table(i).db_column.name,
-                                                                      null, null, null, null, null, null, null, null);
+                                                                      null, null, null, null, null, null, null, null, null);
       end if;
     end loop;
     --
@@ -369,6 +402,18 @@ begin
       dbms_output.put_line(vc_sql);
       execute immediate vc_sql;
     end if;
+    --
+    -- comments
+    /*
+    for i in vt_columns_pair_table.first..vt_columns_pair_table.last
+    loop
+      if (vt_columns_pair_table(i).xml_column.name is not null) then
+        vc_sql := 'comment on column ' || vv_table_owner || '.' || vv_table_name || '.' || vt_columns_pair_table(i).xml_column.name || ' is ' || vt_columns_pair_table(i).xml_column.comments;
+        dbms_output.put_line(vc_sql);
+        execute immediate vc_sql;
+      end if;
+    end loop;
+    */
     -- 2.2 constraints list
     select t_constraint(name, type, columns_list, foreign_owner, foreign_table, foreign_columns_list, condition, delete_rule, validate_clause)
     bulk collect into vt_db_constraints_table
