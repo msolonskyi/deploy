@@ -9,6 +9,7 @@ procedure sp_deploy_table_by_xml_struct(p_xml clob);
 
 end pkg_deploy;
 /
+
 create or replace package body pkg_deploy is
 
 CRLF constant char(2) := chr(13) || chr(10);
@@ -20,6 +21,7 @@ as
   vt_db_columns_table       t_columns_table;
   vt_add_columns_table      t_columns_table := t_columns_table();
   vt_modify_columns_table   t_columns_table := t_columns_table();
+  vt_mod_col_def_val_table  t_columns_table := t_columns_table();
   vt_drop_columns_table     t_columns_table := t_columns_table();
   --
   vt_xml_constraints_table  t_constraints_table;
@@ -30,6 +32,7 @@ as
 
   vt_xml_indexes_table      t_indexes_table;
   vt_db_indexes_table       t_indexes_table;
+  vt_mod_indexes_table      t_indexes_table;
   vt_add_indexes_table      t_indexes_table := t_indexes_table();
   vt_drop_indexes_table     t_indexes_table := t_indexes_table();
   --
@@ -43,6 +46,7 @@ as
   vc_add_columns_sql        clob := empty_clob();
   vc_modify_columns_sql     clob := empty_clob();
   vc_drop_columns_sql       clob := empty_clob();
+  vc_mod_col_def_val_sql    clob := empty_clob();
   i                         pls_integer;
 begin
   --table name
@@ -133,19 +137,33 @@ begin
                           foreign_columns_list varchar2(4000) path '@foreign_columns_list',
                           delete_rule          varchar2(9)    path '@delete_rule',
                           condition            varchar2(4000) path '@condition',
---                          validate_clause      varchar2(10)   path '@validate_clause'
                           status               varchar2(4000) path '@status',
                           validated            varchar2(4000) path '@validated') xml);
   -- indexes list
-  select t_index(name, type, clause)
+  select t_index(name, type, uniqueness, clause, visibility)
   bulk collect into vt_xml_indexes_table
-  from (select upper(trim(name)) as name, replace(upper(trim(type)), 'NORMAL', '') as type, replace(upper(trim(clause)), ' ', '') as clause
+  from (select upper(trim(name)) as name,
+               case
+                 when upper(trim(type)) = 'BITMAP' then upper(trim(type))
+                 else null
+               end as type,
+               case
+                 when upper(trim(uniqueness)) = 'UNIQUE' then upper(trim(uniqueness))
+                 else null
+               end as uniqueness,
+               replace(upper(trim(clause)), ' ', '') as clause,
+               case
+                 when upper(trim(visibility)) = 'INVISIBLE' then upper(trim(visibility))
+                 else 'VISIBLE'
+               end as visibility
         from xmltable('/table/indexes/index'
                        passing xmltype(p_xml)
                        columns
-                          name   varchar2(30)   path '@name',
-                          type   varchar2(30)   path '@type',
-                          clause varchar2(4000) path '@clause') xml);
+                          name       varchar2(30)   path '@name',
+                          type       varchar2(30)   path '@type',
+                          uniqueness varchar2(30)   path '@uniqueness',
+                          clause     varchar2(4000) path '@clause',
+                          visibility varchar2(9)    path '@visibility') xml);
   -- partitions list
 
   select count(1)
@@ -257,7 +275,7 @@ begin
     i := vt_columns_pair_table.first;
     while i is not null
     loop
-      -- 2.1.1. add colums
+      -- 2.1.1. add columns
       if (vt_columns_pair_table(i).db_column.name is null) then
         vt_add_columns_table.extend;
         vt_add_columns_table(vt_add_columns_table.last) := t_column(vt_columns_pair_table(i).xml_column.name,
@@ -270,17 +288,12 @@ begin
                                                                     vt_columns_pair_table(i).xml_column.default_value,
                                                                     vt_columns_pair_table(i).xml_column.virtual_expression,
                                                                     vt_columns_pair_table(i).xml_column.comments);
-      -- 2.1.2. modufy column types
+      -- 2.1.2. modify column types
       elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name) 
-         and (vt_columns_pair_table(i).db_column != vt_columns_pair_table(i).xml_column)) then
+         and (vt_columns_pair_table(i).db_column.mf_equals_without_default_val != vt_columns_pair_table(i).xml_column.mf_equals_without_default_val)) then
         --
         dbms_output.put_line('XML name => ' || vt_columns_pair_table(i).xml_column.name || ', mf_type_to_string => ' || vt_columns_pair_table(i).xml_column.mf_type_to_string || ', nullable => ' || vt_columns_pair_table(i).xml_column.nullable || ', default_value => ' || vt_columns_pair_table(i).xml_column.default_value || ', virtual_expression => ' || vt_columns_pair_table(i).xml_column.virtual_expression);
         dbms_output.put_line('DB  name => ' || vt_columns_pair_table(i).db_column.name || ', mf_type_to_string => ' || vt_columns_pair_table(i).db_column.mf_type_to_string || ', nullable => ' || vt_columns_pair_table(i).db_column.nullable || ', default_value => ' || vt_columns_pair_table(i).db_column.default_value || ', virtual_expression => ' || vt_columns_pair_table(i).db_column.virtual_expression);
-        --
-        /*
-        dbms_output.put_line('XML name => ' || vt_columns_pair_table(i).xml_column.name || ', type => '  || vt_columns_pair_table(i).xml_column.char_length || ', data_precision => ' || vt_columns_pair_table(i).xml_column.data_precision || ', data_scale => ' || vt_columns_pair_table(i).xml_column.data_scale || ', char_used => ' || vt_columns_pair_table(i).xml_column.char_used || ', nullable => ' || vt_columns_pair_table(i).xml_column.nullable || ', default_value => ' || vt_columns_pair_table(i).xml_column.default_value || ', virtual_expression => ' || vt_columns_pair_table(i).xml_column.virtual_expression);
-        dbms_output.put_line('DB  name => ' || vt_columns_pair_table(i).db_column.name || ', type => ' || vt_columns_pair_table(i).db_column.type || ', char_length => ' || vt_columns_pair_table(i).db_column.char_length || ', data_precision => ' || vt_columns_pair_table(i).db_column.data_precision || ', data_scale => ' || vt_columns_pair_table(i).db_column.data_scale || ', char_used => ' || vt_columns_pair_table(i).db_column.char_used || ', nullable => ' || vt_columns_pair_table(i).db_column.nullable || ', default_value => ' || vt_columns_pair_table(i).db_column.default_value || ', virtual_expression => ' || vt_columns_pair_table(i).db_column.virtual_expression);
-        */
         --
         vt_modify_columns_table.extend;
         -- 2.1.2.1 initialization + name
@@ -313,27 +326,22 @@ begin
         if (vt_columns_pair_table(i).db_column.nullable != vt_columns_pair_table(i).xml_column.nullable) then
           vt_modify_columns_table(vt_modify_columns_table.last).nullable       := vt_columns_pair_table(i).xml_column.nullable;
         end if;
+      elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name) 
+         and (vt_columns_pair_table(i).db_column.default_value || '_' != vt_columns_pair_table(i).xml_column.default_value || '_')) then
         -- 2.1.2.5 default_value
-        -- we put NEW value in this column
-        if (vt_columns_pair_table(i).xml_column.default_value is null) then
-          vt_modify_columns_table(vt_modify_columns_table.last).type               := vt_columns_pair_table(i).xml_column.type;
-          vt_modify_columns_table(vt_modify_columns_table.last).char_length        := vt_columns_pair_table(i).xml_column.char_length;
-          vt_modify_columns_table(vt_modify_columns_table.last).data_precision     := vt_columns_pair_table(i).xml_column.data_precision;
-          vt_modify_columns_table(vt_modify_columns_table.last).data_scale         := vt_columns_pair_table(i).xml_column.data_scale;
-          vt_modify_columns_table(vt_modify_columns_table.last).char_used          := vt_columns_pair_table(i).xml_column.char_used;
-          vt_modify_columns_table(vt_modify_columns_table.last).default_value      := null;
-          vt_modify_columns_table(vt_modify_columns_table.last).virtual_expression := vt_columns_pair_table(i).xml_column.virtual_expression;
-        elsif ((vt_columns_pair_table(i).db_column.default_value is null) and
-               (vt_columns_pair_table(i).xml_column.default_value is not null)) then
-          vt_modify_columns_table(vt_modify_columns_table.last).default_value      := vt_columns_pair_table(i).xml_column.default_value;
-        elsif ((vt_columns_pair_table(i).db_column.default_value is not null) and
-               (vt_columns_pair_table(i).xml_column.default_value is not null) and
-               (vt_columns_pair_table(i).db_column.default_value != vt_columns_pair_table(i).xml_column.default_value)) then
-          vt_modify_columns_table(vt_modify_columns_table.last).default_value      := vt_columns_pair_table(i).xml_column.default_value;
-        else
-          vt_modify_columns_table(vt_modify_columns_table.last).default_value      := vt_columns_pair_table(i).db_column.default_value;
-        end if;
-      -- 2.1.3. drop colums
+        vt_mod_col_def_val_table.extend;
+        --
+        vt_mod_col_def_val_table(vt_mod_col_def_val_table.last) := t_column(vt_columns_pair_table(i).xml_column.name,
+                                                                            vt_columns_pair_table(i).xml_column.type,
+                                                                            vt_columns_pair_table(i).xml_column.char_length,
+                                                                            vt_columns_pair_table(i).xml_column.data_precision,
+                                                                            vt_columns_pair_table(i).xml_column.data_scale,
+                                                                            vt_columns_pair_table(i).xml_column.char_used,
+                                                                            vt_columns_pair_table(i).xml_column.nullable,
+                                                                            vt_columns_pair_table(i).xml_column.default_value,
+                                                                            vt_columns_pair_table(i).xml_column.virtual_expression,
+                                                                            vt_columns_pair_table(i).xml_column.comments);
+      -- 2.1.3. drop columns
       elsif (vt_columns_pair_table(i).xml_column.name is null) then
         vt_drop_columns_table.extend;
         vt_drop_columns_table(vt_drop_columns_table.last) := t_column(vt_columns_pair_table(i).db_column.name,
@@ -372,6 +380,22 @@ begin
     if (length(vc_modify_columns_sql) > 0) then
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name;
       vc_sql := vc_sql || CRLF || ' modify (' || vc_modify_columns_sql || ')';
+      --
+      dbms_output.put_line(vc_sql);
+      execute immediate vc_sql;
+    end if;
+    -- modify default value
+    i := vt_mod_col_def_val_table.first;
+    while i is not null
+    loop
+      vc_mod_col_def_val_sql := vc_mod_col_def_val_sql || vt_mod_col_def_val_table(i).mf_get_mod_def_val_string || ',';
+      i := vt_mod_col_def_val_table.next(i);
+    end loop;
+    --
+    vc_mod_col_def_val_sql := trim(trim(both ',' from vc_mod_col_def_val_sql));
+    if (length(vc_mod_col_def_val_sql) > 0) then
+      vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name;
+      vc_sql := vc_sql || CRLF || ' modify (' || vc_mod_col_def_val_sql || ')';
       --
       dbms_output.put_line(vc_sql);
       execute immediate vc_sql;
@@ -513,8 +537,7 @@ begin
                 xml.foreign_owner || '_' ||
                 xml.foreign_table || '_' ||
                 xml.foreign_columns_list || '_' ||
-                xml.condition || '_'
-                || xml.delete_rule) = upper(db.name || '_' || db.type || '_' || db.columns_list || '_' || db.foreign_owner || '_' || db.foreign_table || '_' || db.foreign_columns_list || '_' || db.condition || '_' || db.delete_rule)
+                xml.condition || '_' || xml.delete_rule) = upper(db.name || '_' || db.type || '_' || db.columns_list || '_' || db.foreign_owner || '_' || db.foreign_table || '_' || db.foreign_columns_list || '_' || db.condition || '_' || db.delete_rule)
       and xml.status || '_' ||
           xml.validated != db.status || '_' || db.validated;
     -- 2.3.1 drop constraints
@@ -551,24 +574,38 @@ begin
       i := vt_mod_constraints_table.next(i);
     end loop;    
     -- 2.4 indexes list
-    select t_index(name, type, clause)
+    select t_index(name, type, uniqueness, clause, visibility)
     bulk collect into vt_db_indexes_table
     from (select c.index_name as name,
-                 case 
-                   when i.uniqueness = 'NONUNIQUE' then ''
-                   else i.uniqueness
+                 case
+                   when i.index_type = 'BITMAP' then i.index_type
+                   else null
                  end as type,
-                 listagg(c.column_name, ',') within group (order by c.column_position) as clause
+                 case
+                   when i.uniqueness = 'UNIQUE' then i.uniqueness
+                   else null
+                 end as uniqueness,
+                 listagg(c.column_name, ',') within group (order by c.column_position) as clause,
+                 case
+                   when i.visibility = 'INVISIBLE' then i.visibility
+                   else 'VISIBLE'
+                 end as visibility
           from all_indexes i, all_ind_columns c
           where i.owner = c.index_owner
             and c.index_name = i.index_name
             and c.table_name = vv_table_name
             and i.owner = vv_table_owner
             and i.index_name not in (select constraint_name from all_constraints where constraint_type in ('U', 'P') and table_name = vv_table_name and owner = vv_table_owner)
-          group by c.index_name, i.uniqueness);
+          group by c.index_name, i.index_type, i.uniqueness, i.visibility);
     --
     vt_add_indexes_table  := vt_xml_indexes_table multiset except vt_db_indexes_table;
     vt_drop_indexes_table := vt_db_indexes_table multiset except vt_xml_indexes_table;
+    --
+    select t_index(xml.name, xml.type, xml.uniqueness, xml.clause, xml.visibility)
+    bulk collect into vt_mod_indexes_table
+    from table(vt_xml_indexes_table) xml, table(vt_db_indexes_table) db
+    where upper(xml.name || '_' || xml.type || '_' || xml.uniqueness || '_' || xml.clause) = upper(db.name || '_' || db.type || '_' || db.uniqueness || '_' || db.clause)
+      and xml.visibility != db.visibility;
     -- 2.4.1 drop indexes
     i := vt_drop_indexes_table.first;
     while i is not null
@@ -584,7 +621,7 @@ begin
     i := vt_add_indexes_table.first;
     while i is not null
     loop
-      vc_sql := 'create ' || vt_add_indexes_table(i).type || ' index ' || vt_add_indexes_table(i).name || ' on ' || vv_table_name || ' (' || vt_add_indexes_table(i).clause || ')';
+      vc_sql := 'create ' || vt_add_indexes_table(i).type || ' ' || vt_add_indexes_table(i).uniqueness || ' index ' || vt_add_indexes_table(i).name || ' on ' || vv_table_name || ' (' || vt_add_indexes_table(i).clause || ') ' || vt_add_indexes_table(i).visibility;
       --
       dbms_output.put_line(vc_sql);
       execute immediate vc_sql;
@@ -592,6 +629,16 @@ begin
       i := vt_add_indexes_table.next(i);
     end loop;
     -- 2.4.3. modify indexes
+    i := vt_mod_indexes_table.first;
+    while i is not null
+    loop
+      vc_sql := 'alter index ' || vv_table_owner || '.' || vt_mod_indexes_table(i).name || ' ' || vt_mod_indexes_table(i).visibility;
+      --
+      dbms_output.put_line(vc_sql);
+      execute immediate vc_sql;
+      --
+      i := vt_mod_indexes_table.next(i);
+    end loop;    
   end if;
 exception
   when others then
@@ -601,4 +648,3 @@ end sp_deploy_table_by_xml_struct;
 
 end pkg_deploy;
 /
-

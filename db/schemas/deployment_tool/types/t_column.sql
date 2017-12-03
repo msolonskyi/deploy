@@ -6,14 +6,16 @@ create or replace type t_column is object(
   data_scale         number,
   char_used          varchar(4),
   nullable           varchar(1),
-  default_value      varchar2(30), -- we expect NEW value in this column
+  default_value      varchar2(30),
   virtual_expression varchar2(4000),
   comments           varchar2(4000),
 map member function equals return varchar2,
+member function mf_equals_without_default_val return varchar2,
 member function mf_type_to_string return varchar2,
 member function mf_get_add_column_string return varchar2,
 member function mf_get_modify_column_string return varchar2,
-member function mf_get_drop_column_string return varchar2);
+member function mf_get_mod_def_val_string return varchar2,
+member function mf_get_drop_column_string return varchar2)
 /
 
 create or replace type body t_column is
@@ -21,8 +23,14 @@ create or replace type body t_column is
 ---------------------------------------
 map member function equals return varchar2 as
 begin
-  return upper(name || '_' || mf_type_to_string || '_' || nullable || '_' || default_value || '_' || virtual_expression);
+  return mf_equals_without_default_val || '_' || upper(default_value);
 end equals;
+
+---------------------------------------
+member function mf_equals_without_default_val return varchar2 as
+begin
+  return upper(name || '_' || mf_type_to_string || '_' || nullable || '_' || virtual_expression);
+end mf_equals_without_default_val;
 
 ---------------------------------------
 member function mf_type_to_string return varchar2 as
@@ -72,12 +80,7 @@ begin
   else
     vv_value := vv_value || ' ' || self.mf_type_to_string;
   end if;
-  -- default
-  if self.default_value is not null then
-    vv_value := vv_value || ' default ' || self.default_value;
-  else
-    vv_value := vv_value || ' default null';
-  end if;
+  -- default moved to separate futction
   -- nullable
   if self.nullable is not null then
     if self.nullable = 'N' then
@@ -90,6 +93,26 @@ begin
 end mf_get_modify_column_string;
 
 ---------------------------------------
+member function mf_get_mod_def_val_string return varchar2 as
+  vv_value varchar2(4000);
+begin
+  vv_value := pkg_utils.CRLF || '  ' || self.name;
+  -- type
+  if ((self.char_length is null) and (self.data_precision is null) and (self.data_scale is null) and (self.char_used is null)) then
+    null;
+  else
+    vv_value := vv_value || ' ' || self.mf_type_to_string;
+  end if;
+  -- default
+  if self.default_value is not null then
+    vv_value := vv_value || ' default ' || self.default_value;
+  else
+    vv_value := vv_value || ' default null';
+  end if;
+  return vv_value;
+end mf_get_mod_def_val_string;
+
+---------------------------------------
 member function mf_get_drop_column_string return varchar2 as
 begin
   return pkg_utils.CRLF || '  ' || self.name;
@@ -97,4 +120,3 @@ end mf_get_drop_column_string;
 
 end;
 /
-
