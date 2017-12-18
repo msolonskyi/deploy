@@ -298,7 +298,7 @@ begin
                                                                     vt_columns_pair_table(i).xml_column.virtual_expression,
                                                                     vt_columns_pair_table(i).xml_column.comments);
       -- 2.1.2. modify column types
-      elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name) 
+      elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name)
          and (vt_columns_pair_table(i).db_column.mf_equals_without_default_val != vt_columns_pair_table(i).xml_column.mf_equals_without_default_val)) then
         --
         vt_modify_columns_table.extend;
@@ -332,7 +332,7 @@ begin
         if (vt_columns_pair_table(i).db_column.nullable != vt_columns_pair_table(i).xml_column.nullable) then
           vt_modify_columns_table(vt_modify_columns_table.last).nullable       := vt_columns_pair_table(i).xml_column.nullable;
         end if;
-      elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name) 
+      elsif ((vt_columns_pair_table(i).db_column.name = vt_columns_pair_table(i).xml_column.name)
          and (vt_columns_pair_table(i).db_column.default_value || '_' != vt_columns_pair_table(i).xml_column.default_value || '_')) then
         -- 2.1.2.5 default_value
         vt_mod_col_def_val_table.extend;
@@ -396,7 +396,7 @@ begin
     i := vt_mod_col_def_val_table.first;
     while i is not null
     loop
-      vc_mod_col_def_val_sql := vc_mod_col_def_val_sql || vt_mod_col_def_val_table(i).mf_get_mod_dev_val_string || ',';
+      vc_mod_col_def_val_sql := vc_mod_col_def_val_sql || vt_mod_col_def_val_table(i).mf_get_mod_def_val_string || ',';
       i := vt_mod_col_def_val_table.next(i);
     end loop;
     --
@@ -472,8 +472,8 @@ begin
                    when validated = 'NOT VALIDATED' then 'NOVALIDATE'
                    else null
                  end as validated
-          from (select con.constraint_name as name, 
-                       con.constraint_type as type, 
+          from (select con.constraint_name as name,
+                       con.constraint_type as type,
                        listagg(c_i.column_name, ',') within group (order by c_i.position) as columns_list,
                        c_r.owner as foreign_owner,
                        c_r.table_name as foreign_table,
@@ -496,8 +496,8 @@ begin
                   and con.owner             = vv_table_owner
                 group by con.constraint_name, con.constraint_type,  c_r.owner, c_r.table_name, pkg_utils.sf_get_search_condition(con.owner, con.constraint_name), con.delete_rule, con.status, con.validated
                 union all
-                select con.constraint_name as name, 
-                       con.constraint_type as type, 
+                select con.constraint_name as name,
+                       con.constraint_type as type,
                        listagg(c_i.column_name, ',') within group (order by c_i.position) as columns_list,
                        null as foreign_owner,
                        null as foreign_table,
@@ -516,8 +516,8 @@ begin
                   and con.owner           = vv_table_owner
                 group by con.constraint_name, con.constraint_type, pkg_utils.sf_get_search_condition(con.owner, con.constraint_name), con.delete_rule, con.status, con.validated
                 union all
-                select con.constraint_name as name, 
-                       con.constraint_type as type, 
+                select con.constraint_name as name,
+                       con.constraint_type as type,
                        null columns_list,
                        null as foreign_owner,
                        null as foreign_table,
@@ -563,7 +563,7 @@ begin
       execute immediate vc_sql;
       --
       i := vt_drop_constraints_table.next(i);
-    end loop;    
+    end loop;
     -- 2.3.2. create constraints
     vv_stage := '2.3.2. create constraints';
     i := vt_add_constraints_table.first;
@@ -575,7 +575,7 @@ begin
       execute immediate vc_sql;
       --
       i := vt_add_constraints_table.next(i);
-    end loop;    
+    end loop;
     -- 2.3.3. modify constraints
     vv_stage := '2.3.3. modify constraints';
     i := vt_mod_constraints_table.first;
@@ -587,7 +587,7 @@ begin
       execute immediate vc_sql;
       --
       i := vt_mod_constraints_table.next(i);
-    end loop;    
+    end loop;
     -- 2.4 indexes list
     select t_index(name, type, uniqueness, clause, visibility)
     bulk collect into vt_db_indexes_table
@@ -656,7 +656,7 @@ begin
       execute immediate vc_sql;
       --
       i := vt_mod_indexes_table.next(i);
-    end loop;    
+    end loop;
   end if;
   --
   vv_stage := 'completed successfully.';
