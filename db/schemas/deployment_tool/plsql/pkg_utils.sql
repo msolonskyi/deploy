@@ -5,7 +5,10 @@ create or replace package pkg_utils is
   -- Purpose : Utils for autopatic deploy table from XML structure
 
 ---------------------------------------
-CRLF constant char(2) := chr(13) || chr(10);
+CRLF                        constant char(2)     := chr(13) || chr(10);
+c_null_varchar_substitution constant varchar2(4) := chr(7) || chr(7) || chr(8) || chr(7);
+c_null_number_substitution  constant number      := 1e12;
+c_null_date_substitution    constant date        := to_date('01.01.1800', 'dd.mm.yyyy');
 
 ---------------------------------------
 function sf_get_data_default(
@@ -29,7 +32,7 @@ function sf_get_search_condition(
   pv_owner           in varchar2,
   pv_constraint_name in varchar2)
 return varchar2;
-  
+
 end pkg_utils;
 /
 
