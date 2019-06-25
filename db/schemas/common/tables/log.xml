@@ -1,12 +1,11 @@
 <?xml version="1.0"?>
   <table name="log" type="normal" comments="log">
   <columns>
-    <column name="dtm"       type="timestamp(6)"   nullable="n" default_value="systimestamp"/>
-    <column name="module"    type="varchar2(256)"  nullable="n"/>
+    <column name="dtm"       type="timestamp(6)" nullable="n" default_value="systimestamp"/>
+    <column name="batch_id"  type="number(12)"   nullable="n"/>
     <column name="text"      type="varchar2(4000)"/>
     <column name="clob_text" type="clob"/>
-    <column name="type"      type="varchar2(1)"    nullable="n" default_value="'I'" comments="I - info, W - warning, E - error"/>
-    <column name="sid"       type="varchar2(20)"   nullable="n"/>
+    <column name="type"      type="varchar2(1)"  nullable="n" default_value="'I'" comments="I - info, W - warning, E - error"/>
     <column name="qty"       type="number(16)"/>
   </columns>
   <constraints>

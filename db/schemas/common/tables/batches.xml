@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+  <table name="batches" type="normal" comments="batches table">
+  <columns>
+    <column name="id"         type="number(12)"     nullable="n"/>
+    <column name="start_stm"  type="timestamp(6)"   nullable="n" default_value="systimestamp"/>
+    <column name="finish_dtm" type="timestamp(6)"/>
+    <column name="module"     type="varchar2(256)"  nullable="n"/>
+    <column name="parameters" type="varchar2(4000)"/>
+    <column name="status"     type="varchar2(32)"   nullable="n" default_value="'IN_PROGRESS'"/>
+    <column name="sid"        type="number"         nullable="n"/>
+    <column name="serial#"    type="number"         nullable="n"/>
+  </columns>
+  <constraints>
+    <constraint name="pk_batches" type="primary key" columns_list="id"/>
+    <constraint name="chk_batches" type="check" condition="status in ('IN_PROGRESS', 'COMPLETED_WITH_WARNINGS', 'COMPLETED_WITH_ERRORS')"/>
+  </constraints>
+</table>
