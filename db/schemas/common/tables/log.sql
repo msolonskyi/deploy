@@ -21,3 +21,7 @@ alter table LOG
 alter table LOG
   add constraint CHK_LOG
   check (TYPE IN ('I', 'W', 'E'));
+-- Create/Recreate primary, unique and foreign key constraints 
+alter table LOG
+  add constraint FK_LOG$BATCH_ID foreign key (BATCH_ID)
+  references batches (ID);
