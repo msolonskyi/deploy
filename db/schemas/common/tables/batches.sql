@@ -2,7 +2,7 @@
 create table BATCHES
 (
   id         NUMBER(12) not null,
-  start_stm  TIMESTAMP(6) default SYSTIMESTAMP not null,
+  start_dtm  TIMESTAMP(6) default SYSTIMESTAMP not null,
   finish_dtm TIMESTAMP(6),
   module     VARCHAR2(256) not null,
   parameters VARCHAR2(4000),

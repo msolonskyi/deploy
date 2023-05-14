@@ -2,7 +2,7 @@
   <table name="batches" type="normal" comments="batches table">
   <columns>
     <column name="id"         type="number(12)"     nullable="n"/>
-    <column name="start_stm"  type="timestamp(6)"   nullable="n" default_value="systimestamp"/>
+    <column name="start_dtm"  type="timestamp(6)"   nullable="n" default_value="systimestamp"/>
     <column name="finish_dtm" type="timestamp(6)"/>
     <column name="module"     type="varchar2(256)"  nullable="n"/>
     <column name="parameters" type="varchar2(4000)"/>
