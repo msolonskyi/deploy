@@ -26,6 +26,15 @@ begin
 end equals;
 
 ---------------------------------------
+create or replace type body t_constraint is
+
+---------------------------------------
+map member function equals return varchar2 as
+begin
+  return upper(self.name || '_' || self.type || '_' || self.columns_list || '_' || self.foreign_owner || '_' || self.foreign_table || '_' || self.foreign_columns_list || '_' || self.condition || '_' || self.delete_rule);
+end equals;
+
+---------------------------------------
 member function mf_get_create_string return varchar2 as
   vv_value varchar2(4000) := '';
 begin
@@ -33,7 +42,7 @@ begin
     when self.type in ('PRIMARY KEY', 'UNIQUE') then
       vv_value := ' add constraint ' || self.name || ' ' || self.type || ' (' || self.columns_list || ') ' || self.status || ' ' || self.validated;
     when self.type = 'FOREIGN KEY' then
-      vv_value := ' add constraint ' || self.name || ' ' || self.type || ' (' || self.columns_list || ') references ' || self.foreign_table || ' ' || ' (' || self.foreign_columns_list || ') ' || self.status || ' ' || self.validated;
+      vv_value := ' add constraint ' || self.name || ' ' || self.type || ' (' || self.columns_list || ') references ' || case when self.foreign_owner is null then null else self.foreign_owner || '.' end || self.foreign_table || ' ' || ' (' || self.foreign_columns_list || ') ' || self.status || ' ' || self.validated;
     when self.type = 'CHECK' then
       vv_value := ' add constraint ' || self.name || ' ' || self.type || ' (' || self.condition || ') ' || self.status || ' ' || self.validated;
     else
@@ -76,4 +85,3 @@ end mf_log;
 
 end;
 /
-
