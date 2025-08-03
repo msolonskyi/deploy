@@ -9,11 +9,11 @@ procedure sp_deploy_table_by_xml_struct(p_xml clob);
 
 end pkg_deploy;
 /
+
 create or replace package body pkg_deploy is
 
 CRLF           constant char(2)       := chr(13) || chr(10);
 cv_module_name constant varchar2(256) := 'deploy tables structure';
-cb_is_output   constant boolean       := true;
 ---------------------------------------
 procedure sp_deploy_table_by_xml_struct(p_xml clob)
 as
@@ -49,10 +49,11 @@ as
   vc_mod_col_def_val_sql    clob := empty_clob();
   i                         pls_integer;
   vv_stage                  varchar2(4000);
+  vn_batch_id               logger.batches.id%type;
 begin
-  pkg_log.sp_start_batch(pv_module => cv_module_name);
+  logger.pkg_log.sp_start_batch(pv_module => cv_module_name, pv_server => logger.pkg_log.sf_get_server_name, pn_batch_id => vn_batch_id);
   vv_stage := 'input XML';
-  pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => p_xml, pb_is_output => cb_is_output);
+  logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => p_xml);
   --table name
   select nvl(upper(trim(owner)), user) as owner, upper(trim(name)) as name, upper(trim(type)) as type, trim(comments) as comments
   into vv_table_owner, vv_table_name, vv_table_type, vv_table_comments
@@ -189,7 +190,7 @@ begin
     --
     vc_sql := trim(trim(both ',' from vc_sql)) || ')';
     --
-    pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+    logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
     execute immediate vc_sql;
     --
     -- 1.2. comments
@@ -198,7 +199,7 @@ begin
     if vv_table_comments is not null then
       vc_sql := 'comment on table ' || vv_table_owner || '.' || vv_table_name || ' is ''' || vv_table_comments || '''';
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
     end if;
     --
@@ -210,7 +211,7 @@ begin
       if (vt_xml_columns_table(i).comments is not null) then
         vc_sql := 'comment on column ' || vv_table_owner || '.' || vv_table_name || '.' || vt_xml_columns_table(i).name || ' is ''' || vt_xml_columns_table(i).comments || '''';
         --
-        pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+        logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
         execute immediate vc_sql;
       end if;
       i := vt_xml_columns_table.next(i);
@@ -223,7 +224,7 @@ begin
     loop
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name || vt_xml_constraints_table(i).mf_get_create_string;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_xml_constraints_table.next(i);
@@ -236,7 +237,7 @@ begin
     loop
       vc_sql := 'create ' || vt_xml_indexes_table(i).type || ' index ' || vt_xml_indexes_table(i).name || ' on ' || vv_table_name || ' (' || vt_xml_indexes_table(i).clause || ')';
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_xml_indexes_table.next(i);
@@ -370,7 +371,7 @@ begin
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name;
       vc_sql := vc_sql || CRLF || ' add (' || vc_add_columns_sql || ')';
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
     end if;
     -- 2.1.5. modify
@@ -388,7 +389,7 @@ begin
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name;
       vc_sql := vc_sql || CRLF || ' modify (' || vc_modify_columns_sql || ')';
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
     end if;
     -- 2.1.6. modify default value
@@ -405,7 +406,7 @@ begin
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name;
       vc_sql := vc_sql || CRLF || ' modify (' || vc_mod_col_def_val_sql || ')';
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
     end if;
     -- 2.1.7. drop columns
@@ -422,7 +423,7 @@ begin
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name;
       vc_sql := vc_sql || CRLF || ' set unused (' || vc_drop_columns_sql || ')';
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
     end if;
     --
@@ -430,7 +431,7 @@ begin
     -- 2.2.1. table comments
     vv_stage := '2.2.1. table comments';
     vc_sql := 'comment on table ' || vv_table_owner || '.' || vv_table_name || ' is ''' || vv_table_comments || '''';
-    pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+    logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
     execute immediate vc_sql;
     -- 2.2.2. columns comments
     vv_stage := '2.2.2. columns comments';
@@ -440,7 +441,7 @@ begin
       if (vt_columns_pair_table(i).xml_column.name is not null) then
         vc_sql := 'comment on column ' || vv_table_owner || '.' || vv_table_name || '.' || vt_columns_pair_table(i).xml_column.name || ' is ''' || vt_columns_pair_table(i).xml_column.comments || '''';
         --
-        pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+        logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
         execute immediate vc_sql;
         --
         i := vt_columns_pair_table.next(i);
@@ -559,7 +560,7 @@ begin
     loop
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name || vt_drop_constraints_table(i).mf_get_drop_string;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_drop_constraints_table.next(i);
@@ -571,7 +572,7 @@ begin
     loop
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name || vt_add_constraints_table(i).mf_get_create_string;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_add_constraints_table.next(i);
@@ -583,7 +584,7 @@ begin
     loop
       vc_sql := 'alter table ' || vv_table_owner || '.' || vv_table_name || vt_add_constraints_table(i).mf_get_modify_string;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_mod_constraints_table.next(i);
@@ -628,7 +629,7 @@ begin
     loop
       vc_sql := 'drop index ' || vv_table_owner || '.' || vt_drop_indexes_table(i).name;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_drop_indexes_table.next(i);
@@ -640,7 +641,7 @@ begin
     loop
       vc_sql := 'create ' || vt_add_indexes_table(i).type || ' ' || vt_add_indexes_table(i).uniqueness || ' index ' || vt_add_indexes_table(i).name || ' on ' || vv_table_name || ' (' || vt_add_indexes_table(i).clause || ') ' || vt_add_indexes_table(i).visibility;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_add_indexes_table.next(i);
@@ -652,23 +653,22 @@ begin
     loop
       vc_sql := 'alter index ' || vv_table_owner || '.' || vt_mod_indexes_table(i).name || ' ' || vt_mod_indexes_table(i).visibility;
       --
-      pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => vc_sql, pb_is_output => cb_is_output);
+      logger.pkg_log.sp_log_message(pn_batch_id => vn_batch_id, pv_text => vv_stage, pv_clob_text => vc_sql);
       execute immediate vc_sql;
       --
       i := vt_mod_indexes_table.next(i);
     end loop;
   end if;
   --
-  vv_stage := 'completed successfully';
-  pkg_log.sp_log_message(pv_text => vv_stage, pb_is_output => cb_is_output);
-  pkg_log.sp_finish_batch_successfully;
+  logger.pkg_log.sp_finish_batch_successfully(pn_batch_id => vn_batch_id);
 exception
   when others then
-    vv_stage := 'errors stack';
-    pkg_log.sp_log_message(pv_text => vv_stage, pv_clob => dbms_utility.format_error_stack || pkg_utils.CRLF || dbms_utility.format_error_backtrace, pv_type => 'E');
-    pkg_log.sp_finish_batch_with_errors;
-    raise_application_error (-20002, dbms_utility.format_error_stack || CRLF || dbms_utility.format_error_backtrace);
+    rollback;
+    logger.pkg_log.sp_log_message(pv_text => 'errors stack', pv_clob_text => dbms_utility.format_error_stack || pkg_utils.CRLF || dbms_utility.format_error_backtrace, pv_type => 'E', pn_batch_id => vn_batch_id);
+    logger.pkg_log.sp_finish_batch_with_errors(pn_batch_id => vn_batch_id);
+    raise;
 end sp_deploy_table_by_xml_struct;
 
 end pkg_deploy;
 /
+
